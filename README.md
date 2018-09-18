@@ -1,37 +1,158 @@
-## Welcome to GitHub Pages
+---
+title: "Practical Machine Learning Course Project"
+author: "Muhammad Farhan Mirza"
+date: "September 16, 2018"
+output: html_document
+---
 
-You can use the [editor on GitHub](https://github.com/farhan-mirzaaa/PracticalMachineLearningCourseProject/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
-
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
-
-### Markdown
-
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
 ```
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+This document describes the implementation of Practical Machine Learning Course Project. 
 
-### Jekyll Themes
+## Project Description & Intended Results
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/farhan-mirzaaa/PracticalMachineLearningCourseProject/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+"Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset)."
 
-### Support or Contact
+The goal of this project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
 
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+1.  Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+        
+2.  You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details.
+
+## Include Dependant Library Directories
+
+```{R}
+library(caret)
+library(rattle)
+```
+
+## Getting and Cleaning Data
+
+Load the training and test data directly from web links into R.
+```{r}
+trainURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+trainFileName <- "pml-training.csv"
+if ( !file.exists(trainFileName) ){
+  download.file(url=trainURL, destfile = trainFileName, method = "curl")
+}
+
+testURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+testFileName <- "pml-testing.csv"
+if ( !file.exists(testFileName) ){
+  download.file(url = testURL, destfile = testFileName, method = "curl")
+}
+
+pmlTraining <- read.csv(trainFileName, header = TRUE)
+pmlTesting <- read.csv(testFileName, header = TRUE)
+```
+
+There are 160 variables in the training and testing datasets, which also includes NA values, Identification columns and also some variables have near zero variance which needs to be removed first in order to train the model.
+
+First we will remove the variables which have mostly NA values.
+```{r}
+NAVars <- sapply(pmlTraining, function(x) mean(is.na(x))) < 0.95
+pmlTraining <- pmlTraining[,NAVars]
+```
+
+Now, lets remove the variables having variance near zero.
+```{r}
+nzv <- nearZeroVar(pmlTraining)
+pmlTraining <- pmlTraining[,-nzv]
+```
+Now, remove the identification columns from training dataset.
+```{r}
+pmlTraining <- pmlTraining[,-(1:5)]
+```
+
+Now partition the data into training and test set with the ratio of 60:40, so that we can test our model without applying on the evaluation data available in "pml-testing.csv".
+```{r}
+indexTrain <- createDataPartition(pmlTraining$classe, p = 0.6, list = FALSE)
+trainSet <- pmlTraining[indexTrain,]
+testSet <- pmlTraining[-indexTrain,]
+```
+
+## Prediction - Model Selection
+
+Now I will dive into training the model and apply the different models on the ***testSet***, so that we can check the accuracy for better model selection to check the model for ***pml-testing***.
+
+#### 1. Gradiant Boosted Model
+
+Train the GBM model and apply prediction on ***testSet***.
+```{r}
+set.seed(1111)
+gbmFit <- train(classe~., data = trainSet, method = "gbm", verbose = FALSE)
+gbmPredict <- predict(gbmFit, newdata = testSet)
+confusionMatrix(gbmPredict, testSet$classe)
+```
+#### 2. Classification Trees
+
+Train the Classification Trees model and apply prediction on ***testSet***.
+```{r}
+set.seed(1111)
+#ctFit <- train(classe~., data = trainSet, method = "rpart")
+ctFit <- rpart::rpart(classe~., data = trainSet, method = "class")
+fancyRpartPlot(ctFit)
+```
+
+```{r}
+ctPredict <- predict(ctFit, newdata = testSet, type = "class")
+confusionMatrix(ctPredict, testSet$classe)
+```
+
+#### 3. Random Forest
+
+Train the Random Forest model and apply prediction on ***testSet***.
+```{r}
+set.seed(1111)
+rfFit <- train(classe~., data = trainSet, method = "rf")
+rfPredict <- predict(rfFit, newdata = testSet)
+confusionMatrix(rfPredict, testSet$classe)
+```
+
+#### 4. Linear Discriminant Analysis
+
+Train the Linear Discriminant Analysis model and apply prediction on ***testSet***.
+```{r}
+set.seed(1111)
+ldaFit <- train(classe~., data = trainSet, method = "lda")
+ldaPredict <- predict(ldaFit, newdata = testSet)
+confusionMatrix(ldaPredict, testSet$classe)
+```
+
+## Out Of Sample Error
+
+```{r}
+oose.lda <- 1 - ( sum(ldaPredict == testSet$classe) / length(ldaPredict) )
+oose.gbm <- 1 - ( sum(gbmPredict == testSet$classe) / length(gbmPredict) )
+oose.rf <- 1 - ( sum(rfPredict == testSet$classe) / length(rfPredict) )
+oose.ct <- 1 - ( sum(ctPredict == testSet$classe) / length(ctPredict) )
+```
+
+The Out of Sample Error for
+
+  1.  Linear Discriminant Analysis is **`r oose.lda`**
+  2.  Gradiant Boosted Model is **`r oose.gbm`**
+  3.  Random Forest is **`r oose.rf`**
+  4.  Classification Trees is **`r oose.ct`**
+  
+## Accuracy
+
+The accuracy of the models discussed above is
+
+  1.  Linear Discriminant Analysis is **70.69%**
+  2.  Gradiant Boosted Model is **98.76%**
+  3.  Random Forest is **99.78%**
+  4.  Classification Trees is **73.01%**
+  
+  
+## Predicting quiz results
+
+As we can see that the Random Forest model has the highest accuracy **99.78%** as well as lowest Out of sample error is **0.216%**. So, I am selecting Random Forest for the prediction of ***pml-testing*** dataset for the quiz results.
+
+```{r}
+predPMLTesting <- predict(rfFit, newdata = pmlTesting)
+predPMLTesting
+```
